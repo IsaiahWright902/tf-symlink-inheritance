@@ -6,7 +6,7 @@ Eliminate infrastructure duplication across environments using native Terraform 
 
 ## The Problem
 
-Managing infrastructure across multiple environments (CI, QA, Prod) typically means:
+Managing infrastructure across multiple environments (Dev, QA, Prod) typically means:
 - Copying the same `.tf` files across 7+ folders
 - Manual synchronization when updating modules
 - Version drift between environments
