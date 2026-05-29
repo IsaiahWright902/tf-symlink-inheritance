@@ -1,0 +1,47 @@
+name: EXAMPLE-SERVICE-PROD
+
+on:
+  push:
+    paths:
+      - "example-service/prod/**"
+    branches: [main]
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+    paths:
+      - "example-service/prod/**"
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  terraform-plan-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      # Configure GitHub environment protection rules for prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init
+        working-directory: example-service/prod
+        run: terraform init
+
+      - name: Terraform Plan
+        if: github.event_name == 'pull_request'
+        working-directory: example-service/prod
+        run: terraform plan -no-color
+
+      - name: Terraform Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: example-service/prod
+        run: terraform apply -auto-approve

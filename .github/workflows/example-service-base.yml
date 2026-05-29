@@ -1,0 +1,34 @@
+name: EXAMPLE-SERVICE-BASE-ORCHESTRATOR
+
+on:
+  push:
+    paths:
+      - "example-service/_base/**"
+      - ".github/workflows/example-service-base.yml"
+    branches: [main]
+  pull_request:
+    paths:
+      - "example-service/_base/**"
+      - ".github/workflows/example-service-base.yml"
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+  workflow_dispatch:
+
+jobs:
+  # Trigger all environment workflows when base changes
+  trigger-ci:
+    uses: ./.github/workflows/example-service-ci.yml
+    secrets: inherit
+
+  trigger-qa:
+    needs: trigger-ci
+    uses: ./.github/workflows/example-service-qa.yml
+    secrets: inherit
+
+  trigger-prod:
+    needs: trigger-qa
+    uses: ./.github/workflows/example-service-prod.yml
+    secrets: inherit
