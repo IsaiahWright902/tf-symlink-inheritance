@@ -16,7 +16,7 @@ Managing infrastructure across multiple environments (CI, QA, Prod) typically me
 
 This pattern brings OOP-style inheritance to Terraform:
 - **Base class** = `_base/` folder with shared infrastructure
-- **Child classes** = environment folders (ci/, qa/, prod/)
+- **Child classes** = environment folders (dev/, qa/, prod/)
 - **Inheritance** = symlinks to base files
 - **Extensions** = `{env}-*.tf` files for environment-specific additions
 
@@ -114,7 +114,7 @@ You wanted OOP-style inheritance for Terraform:
 
 Terraform doesn't support this natively. This pattern uses symlinks to achieve it without third-party tools.
 
-**Bonus:** Environment-specific variables can be defined only where needed. Prod needs `backup_retention_days`? Add `prod-live-variables.tf`. Other environments don't see it.
+**Bonus:** Environment-specific variables can be defined only where needed. Prod needs `backup_retention_days`? Add `prod-variables.tf`. Other environments don't see it.
 
 ## Documentation
 
