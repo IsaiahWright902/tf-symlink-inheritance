@@ -13,7 +13,7 @@ Use symlinks to achieve OOP-style inheritance for Terraform infrastructure
 
 ### Core Concept
 - **_base/** folder contains all shared infrastructure (main.tf, variables.tf, provider.tf, datasource.tf)
-- **Environment folders** (ci/, qa/, prod-live/) symlink to _base/ files
+- **Environment folders** (dev/, qa/, prod/) symlink to _base/ files
 - **Symlinks in Git** - Git tracks symlinks as small pointers (not duplicate content), but Terraform reads them as complete files when running plans/applies
 - **Environment-specific files** (ci-*.tf, qa-*.tf, prod-*.tf) add optional customizations
 - **backend.tf** in each environment selects the TF Cloud workspace
@@ -28,13 +28,13 @@ _base/
   ├── provider.tf
   └── datasource.tf
 
-ci/
+dev/
   ├── backend.tf           ← Unique workspace config
   ├── main.tf → symlink    ← Inherits from _base/
   ├── variables.tf → symlink
   ├── provider.tf → symlink
   ├── datasource.tf → symlink
-  └── ci-cost-savings.tf   ← Optional CI-specific resources
+  └── dev-scaling.tf   ← Optional CI-specific resources
 
 qa/
   ├── backend.tf           ← Unique workspace config
@@ -42,12 +42,12 @@ qa/
   ├── qa-debug.tf          ← Optional QA-specific resources
   └── qa-test-data.tf
 
-prod-live/
+prod/
   ├── backend.tf           ← Unique workspace config
   ├── [symlinks to _base/]
-  ├── prod-live-backup.tf  ← Optional prod-specific resources
-  ├── prod-live-monitoring.tf
-  └── prod-live-variables.tf  ← Optional prod-specific variables
+  ├── prod-backup.tf  ← Optional prod-specific resources
+  ├── prod-monitoring.tf
+  └── prod-variables.tf  ← Optional prod-specific variables
 ```
 
 ### Benefits
@@ -62,9 +62,9 @@ prod-live/
 
 ### Workflow Behavior
 - Edit `_base/main.tf` → Orchestrator triggers CI → QA → Prod (all environments deploy)
-- Edit `ci/ci-cost-savings.tf` → Only CI workflow runs
+- Edit `dev/dev-scaling.tf` → Only dev workflow runs
 - Edit `qa/qa-debug.tf` → Only QA workflow runs
-- Edit `prod-live/prod-live-monitoring.tf` → Only Prod workflow runs (with approval gate)
+- Edit `prod/prod-monitoring.tf` → Only Prod workflow runs (with approval gate)
 
 ### Developer Experience
 ```bash

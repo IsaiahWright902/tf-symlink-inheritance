@@ -2,7 +2,7 @@
 
 ## The Problem This Solves
 
-**Before:** 7 duplicate folders, version drift, update nightmare
+**Before:** Multiple duplicate folders, version drift, update nightmare
 **After:** Define once, symlink everywhere, optional overrides
 
 ## Structure
@@ -10,18 +10,18 @@
 ```
 example-service/
 ├── _base/                          ← Define infrastructure ONCE
-│   ├── main.tf                     ← example-module v2.15.1
+│   ├── main.tf                     ← Spot EC2 instance
 │   ├── variables.tf                ← All variable definitions
 │   ├── provider.tf
 │   └── datasource.tf
 │
-├── ci/                             ← CI environment
+├── dev/                            ← Dev environment
 │   ├── backend.tf                  ← Unique (workspace config)
 │   ├── main.tf → ../_base/main.tf           (symlink to base)
 │   ├── variables.tf → ../_base/variables.tf (symlink to base)
 │   ├── provider.tf → ../_base/provider.tf   (symlink to base)
 │   ├── datasource.tf → ../_base/datasource.tf (symlink to base)
-│   └── ci-cost-savings.tf         ← CI-specific additions
+│   └── dev-scaling.tf              ← Dev-specific additions
 │
 ├── qa/                             ← QA environment
 │   ├── backend.tf                  ← Unique (workspace config)
@@ -32,15 +32,15 @@ example-service/
 │   ├── qa-debug.tf                 ← QA-specific debug resources
 │   └── qa-test-data.tf             ← QA-specific test data generators
 │
-└── prod-live/                      ← Prod environment
+└── prod/                           ← Prod environment
     ├── backend.tf                  ← Unique (workspace config)
     ├── main.tf → ../_base/main.tf           (symlink to base)
     ├── variables.tf → ../_base/variables.tf (symlink to base)
     ├── provider.tf → ../_base/provider.tf   (symlink to base)
     ├── datasource.tf → ../_base/datasource.tf (symlink to base)
-    ├── prod-live-backup.tf         ← Prod-specific backup infrastructure
-    ├── prod-live-monitoring.tf     ← Prod-specific enhanced monitoring
-    └── prod-live-variables.tf      ← Prod-specific variable definitions
+    ├── prod-backup.tf              ← Prod-specific backup infrastructure
+    ├── prod-monitoring.tf          ← Prod-specific enhanced monitoring
+    └── prod-variables.tf           ← Prod-specific variable definitions
 ```
 
 ## How It Works
@@ -48,8 +48,8 @@ example-service/
 ### Symlinks = Shared Infrastructure
 
 All environments symlink to `_base/` files:
-- Edit `_base/main.tf` → All 7 environments see it
-- Update module version once → All environments get it
+- Edit `_base/main.tf` → All environments see it
+- Update infrastructure once → All environments get it
 - Zero duplication, zero drift
 
 ### backend.tf = Workspace Selection
@@ -58,7 +58,7 @@ Each environment has unique `backend.tf`:
 ```hcl
 # qa/backend.tf
 workspaces {
-  name = "your-product-document-scanning-terraform-qa"
+  name = "example-service-qa"
 }
 ```
 
@@ -67,10 +67,11 @@ This controls which TF Cloud workspace (and thus which variable values).
 ### Environment-specific files = Optional Additions
 
 Add files prefixed with environment name for environment-specific resources:
-- `qa-debug.tf` → Debug queue, logs (QA only)
-- `prod-live-backup.tf` → Backup vault, plan (Prod only)
-- `prod-live-monitoring.tf` → Enhanced monitoring (Prod only)
-- `prod-live-variables.tf` → Additional variables only prod needs
+- `dev-scaling.tf` → Dev-specific log group
+- `qa-debug.tf` → Debug resources, test data (QA only)
+- `prod-backup.tf` → EBS volume, alarms (Prod only)
+- `prod-monitoring.tf` → SNS alerts, CloudWatch (Prod only)
+- `prod-variables.tf` → Additional variables only prod needs
 
 These files can use all base variables (they're symlinked). You can also add environment-specific variable definitions that only that environment needs.
 
@@ -83,11 +84,11 @@ terraform init
 terraform apply
 
 # Deploy to Prod
-cd example-service/prod-live
+cd example-service/prod
 terraform init
 terraform apply
 
-# Update module version
+# Update base infrastructure
 # Edit _base/main.tf once
 # All environments get the update
 ```
@@ -106,16 +107,16 @@ terraform apply
 
 ```bash
 cd example-service
-mkdir tcpci
+mkdir staging
 
 # Create unique backend
-cat > tcpci/backend.tf << 'EOL'
+cat > staging/backend.tf << 'EOL'
 terraform {
   backend "remote" {
     hostname     = "app.terraform.io"
     organization = "your-org"
     workspaces {
-      name = "your-product-document-scanning-terraform-tcpci"
+      name = "example-service-staging"
     }
   }
   required_version = ">= 1.7.5"
@@ -123,14 +124,14 @@ terraform {
 EOL
 
 # Symlink base files
-cd tcpci
+cd staging
 ln -s ../_base/main.tf main.tf
 ln -s ../_base/variables.tf variables.tf
 ln -s ../_base/provider.tf provider.tf
 ln -s ../_base/datasource.tf datasource.tf
 
 # Optional: Add environment-specific resources
-touch tcpci-regional.tf  # If tcpci needs something unique
+touch staging-config.tf  # If staging needs something unique
 ```
 
 ## Adding Environment-Specific Resources
@@ -158,37 +159,36 @@ If an environment needs additional variables beyond the base, create an environm
 
 ```bash
 # Create additional variables for prod only
-cd prod-live
-touch prod-live-variables.tf
+cd prod
+touch prod-variables.tf
 ```
 
 ```hcl
-# prod-live/prod-live-variables.tf
-variable "backup_retention_days" {
-  description = "How long to keep backups in days"
-  type        = number
-}
-
+# prod/prod-variables.tf
 variable "alarm_email" {
   description = "Email address for production alerts"
   type        = string
+}
+
+variable "data_volume_size" {
+  description = "Size of additional EBS volume in GB"
+  type        = number
+  default     = 100
 }
 ```
 
 Then use them in your environment-specific resource files:
 
 ```hcl
-# prod-live/prod-live-backup.tf
-resource "aws_backup_plan" "this" {
-  name = "${var.service_name}-${var.environment}-backup-plan"
-  rule {
-    rule_name = "daily_backup"
-    target_vault_name = aws_backup_vault.this.name
-    schedule = "cron(0 5 ? * * *)"
-    lifecycle {
-      delete_after = var.backup_retention_days  # Uses prod-specific variable
-    }
-  }
+# prod/prod-backup.tf
+resource "aws_ebs_volume" "data" {
+  availability_zone = "${var.region}a"
+  size              = var.data_volume_size  # Uses prod-specific variable
+  encrypted         = true
+
+  tags = merge(var.tags, {
+    Name = "${var.service_name}-${var.environment}-data"
+  })
 }
 ```
 
@@ -200,17 +200,17 @@ The pattern includes workflow orchestration for automated deployments:
 
 ```
 .github/workflows/
-├── example-service-base.yml        ← Orchestrator (watches _base/)
-├── example-service-ci.yml          ← CI workflow (watches ci/)
-├── example-service-qa.yml          ← QA workflow (watches qa/)
-└── example-service-prod-live.yml   ← Prod workflow (watches prod-live/)
+├── example-service-base.yml   ← Orchestrator (watches _base/)
+├── example-service-dev.yml    ← Dev workflow (watches dev/)
+├── example-service-qa.yml     ← QA workflow (watches qa/)
+└── example-service-prod.yml   ← Prod workflow (watches prod/)
 ```
 
 **Workflow behavior:**
-- Edit `_base/main.tf` → Base orchestrator triggers all environments (CI → QA → Prod sequentially)
-- Edit `ci/ci-cost-savings.tf` → Only CI workflow runs
+- Edit `_base/main.tf` → Base orchestrator triggers all environments (Dev → QA → Prod sequentially)
+- Edit `dev/dev-scaling.tf` → Only dev workflow runs
 - Edit `qa/qa-debug.tf` → Only QA workflow runs
-- Edit `prod-live/prod-live-monitoring.tf` → Only Prod workflow runs
+- Edit `prod/prod-monitoring.tf` → Only prod workflow runs
 
 Each environment workflow:
 - Can be triggered manually via `workflow_dispatch`
@@ -218,15 +218,15 @@ Each environment workflow:
 - Runs `terraform plan` on PRs, `terraform apply` on merge to main
 - Prod includes GitHub environment protection for required reviewers
 
-## This Is What You Wanted
+## Key Benefits
 
-- ✅ Define infrastructure once
-- ✅ Define variables once  
-- ✅ Values from TF Cloud workspace
+- ✅ Define infrastructure once in `_base/`
+- ✅ Define variables once (or add per-environment as needed)
+- ✅ Variable values from TF Cloud workspace
 - ✅ Each environment can add resources/variables
-- ✅ Environment files use base variables
+- ✅ Environment files use base variables seamlessly
 - ✅ IDE shows variables (no errors after terraform init)
 - ✅ Clean folder organization
-- ✅ No duplication, no drift
+- ✅ Zero duplication, zero drift
 - ✅ Workflow orchestration for base changes
 - ✅ Individual workflows for environment-specific changes
